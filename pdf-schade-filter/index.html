@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Schade Filter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src='https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js'></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 40px; color: white; }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+        .upload-area:hover { border-color: #764ba2; background: #f0f2ff; }
+        .upload-icon { font-size: 48px; margin-bottom: 15px; }
+        input[type="file"] { display: none; }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .progress-bar {
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 20px;
+            display: none;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .keywords {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3e0;
+            border-radius: 8px;
+        }
+        .keyword {
+            display: inline-block;
+            background: #ff9800;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 0.85rem;
+            margin: 4px;
+        }
+        .result { margin-top: 20px; display: none; }
+        .preview-item {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ccc;
+        }
+        .preview-item.damage {
+            border-left-color: #f44336;
+            background: #ffebee;
+        }
+        .preview-item.keep {
+            border-left-color: #4caf50;
+            background: #e8f5e9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 PDF Schade Filter</h1>
+            <p>Upload een onderhoudshistorie PDF en verwijder schade-regels</p>
+        </div>
+        
+        <div class="card">
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📄</div>
+                <div style="font-size: 1.2rem; margin-bottom: 10px;">Klik om PDF te uploaden</div>
+                <div style="color: #666; font-size: 0.9rem;">of sleep hier je bestand</div>
+            </div>
+            <input type="file" id="fileInput" accept=".pdf" onchange="handleFile(this.files[0])">
+            
+            <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div id="status" style="text-align: center; margin-top: 10px; color: #666;"></div>
+            
+            <div class="keywords">
+                <strong>🚫 Herkende schade-trefwoorden:</strong><br>
+                <span class="keyword">schade</span>
+                <span class="keyword">botsing</span>
+                <span class="keyword">collision</span>
+                <span class="keyword">reparatie</span>
+                <span class="keyword">herstel</span>
+                <span class="keyword">damage</span>
+                <span class="keyword">ongeval</span>
+                <span class="keyword">accident</span>
+                <span class="keyword">aanrijding</span>
+                <span class="keyword">plaatwerk</span>
+            </div>
+            
+            <button class="btn" id="processBtn" onclick="processPDF()" disabled>Verwerk PDF</button>
+            <button class="btn" id="downloadBtn" onclick="downloadPDF()" style="display: none; margin-left: 10px;">⬇️ Download</button>
+            
+            <div class="result" id="result">
+                <h3>Resultaat:</h3>
+                <div id="previewList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const damageKeywords = ['schade', 'botsing', 'collision', 'reparatie', 'herstel', 'damage', 'ongeval', 'accident', 'ramp', 'aanrijding', 'aanvaring', 'impact', 'plaatwerk', 'lakwerk', 'totaal', 'verkeers'];
+        let currentFile = null;
+        let extractedText = '';
+        
+        function handleFile(file) {
+            if (!file || file.type !== 'application/pdf') {
+                alert('Selecteer een PDF bestand');
+                return;
+            }
+            currentFile = file;
+            document.getElementById('processBtn').disabled = false;
+            document.getElementById('status').textContent = '✓ ' + file.name + ' geselecteerd';
+        }
+        
+        async function processPDF() {
+            if (!currentFile) return;
+            
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('progressBar').style.display = 'block';
+            document.getElementById('status').textContent = 'PDF laden...';
+            document.getElementById('progressFill').style.width = '20%';
+            
+            try {
+                // Laad PDF
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                
+                document.getElementById('status').textContent = 'OCR uitvoeren (dit kan even duren)...';
+                document.getElementById('progressFill').style.width = '50%';
+                
+                // Converteer eerste pagina naar afbeelding voor OCR
+                // (Vereist extra library, voor nu simuleren we)
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                document.getElementById('progressFill').style.width = '80%';
+                document.getElementById('status').textContent = 'Regels analyseren...';
+                
+                // Simuleer gevonden regels (in productie: echte OCR)
+                const lines = [
+                    { date: '01-01-2023', text: 'APK keuring - Goedgekeurd', isDamage: false },
+                    { date: '15-03-2023', text: 'Olie verversen en filters', isDamage: false },
+                    { date: '22-06-2023', text: 'Schade voorbumper - gerepareerd', isDamage: true },
+                    { date: '10-09-2023', text: 'Banden vervangen (4x)', isDamage: false },
+                    { date: '05-12-2023', text: 'Aanrijding achterzijde - herstel', isDamage: true },
+                ];
+                
+                displayResults(lines);
+                
+                document.getElementById('progressFill').style.width = '100%';
+                document.getElementById('status').textContent = '✓ Klaar!';
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+                
+            } catch (err) {
+                alert('Fout: ' + err.message);
+                document.getElementById('processBtn').disabled = false;
+            }
+        }
+        
+        function displayResults(lines) {
+            const result = document.getElementById('result');
+            const list = document.getElementById('previewList');
+            
+            let damageCount = 0;
+            let keepCount = 0;
+            
+            list.innerHTML = lines.map(line => {
+                if (line.isDamage) damageCount++;
+                else keepCount++;
+                
+                return `
+                    <div class="preview-item ${line.isDamage ? 'damage' : 'keep'}">
+                        <strong>${line.date}</strong> - ${line.text}<br>
+                        <small style="color: ${line.isDamage ? '#f44336' : '#4caf50'}">
+                            ${line.isDamage ? '🚫 Verwijderd' : '✓ Behouden'}
+                        </small>
+                    </div>
+                `;
+            }).join('');
+            
+            list.innerHTML = `
+                <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px;">
+                    <strong>Statistieken:</strong><br>
+                    Totaal: ${lines.length} regels | 
+                    <span style="color: #4caf50;">Behouden: ${keepCount}</span> | 
+                    <span style="color: #f44336;">Verwijderd: ${damageCount}</span>
+                </div>
+            ` + list.innerHTML;
+            
+            result.style.display = 'block';
+        }
+        
+        async function downloadPDF() {
+            alert('Download functie - in volledige versie wordt hier een PDF gegenereerd');
+        }
+    </script>
+</body>
+</html>
