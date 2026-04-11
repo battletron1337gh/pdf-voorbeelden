@@ -347,68 +347,55 @@
                 const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
                 
-                updateProgress(20, 'OCR voorbereiden...');
+                updateProgress(20, 'Tekst extractie...');
                 
                 const allLines = [];
                 
-                // Verwerk elke pagina
+                // EERST: Probeer tekst direct uit PDF te halen (geen OCR)
                 for (let i = 1; i <= pdf.numPages; i++) {
                     try {
-                        updateProgress(20 + ((i-1) / pdf.numPages) * 60, `Pagina ${i} van ${pdf.numPages}...`);
+                        updateProgress(20 + ((i-1) / pdf.numPages) * 30, `Pagina ${i} - tekst extractie...`);
                         
                         const page = await pdf.getPage(i);
                         
-                        // Render met HOGE resolutie voor betere OCR
-                        const scale = 2.0;
-                        const viewport = page.getViewport({ scale });
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                        canvas.width = viewport.width;
-                        canvas.height = viewport.height;
+                        // Probeer tekst direct te halen
+                        const textContent = await page.getTextContent();
+                        const textItems = textContent.items;
                         
-                        // Witte achtergrond EERST
-                        ctx.fillStyle = '#FFFFFF';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        log(`Pagina ${i}: ${textItems.length} tekst items gevonden`);
                         
-                        // Render PDF op canvas
-                        const renderContext = {
-                            canvasContext: ctx,
-                            viewport: viewport,
-                            background: 'white'
-                        };
-                        
-                        await page.render(renderContext).promise;
-                        
-                        log(`Pagina ${i} gerenderd: ${canvas.width}x${canvas.height}`);
-                        
-                        // OCR
-                        if (tesseractWorker) {
-                            ocrText.textContent = `Pagina ${i} - OCR bezig...`;
-                            const result = await tesseractWorker.recognize(canvas);
-                            const text = result.data.text;
+                        if (textItems.length > 0) {
+                            // Combineer tekst items
+                            let pageText = '';
+                            let lastY = null;
                             
-                            log(`Pagina ${i} OCR: ${text.length} tekens`);
-                            
-                            if (text.trim()) {
-                                // Splits in regels
-                                const lines = text.split('\n')
-                                    .map(l => l.trim())
-                                    .filter(l => l.length > 2);
-                                
-                                lines.forEach((line, idx) => {
-                                    const lowerLine = line.toLowerCase();
-                                    const isDamage = damageKeywords.some(kw => lowerLine.includes(kw));
-                                    
-                                    allLines.push({
-                                        id: `p${i}-l${idx}`,
-                                        page: i,
-                                        text: line,
-                                        isDamage: isDamage
-                                    });
-                                });
-                                
-                                log(`Pagina ${i}: ${lines.length} regels`);
+                            for (const item of textItems) {
+                                if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+                                    pageText += '\n';
+                                }
+                                pageText += item.str + ' ';
+                                lastY = item.transform[5];
                             }
+                            
+                            // Splits in regels
+                            const lines = pageText.split('\n')
+                                .map(l => l.trim())
+                                .filter(l => l.length > 3);
+                            
+                            lines.forEach((line, idx) => {
+                                const lowerLine = line.toLowerCase();
+                                const isDamage = damageKeywords.some(kw => lowerLine.includes(kw));
+                                
+                                allLines.push({
+                                    id: `p${i}-l${idx}`,
+                                    page: i,
+                                    text: line,
+                                    isDamage: isDamage,
+                                    source: 'text'
+                                });
+                            });
+                            
+                            log(`Pagina ${i}: ${lines.length} tekst regels`);
                         }
                         
                         page.cleanup();
@@ -417,20 +404,71 @@
                     }
                 }
                 
+                // ALS geen tekst gevonden, probeer OCR
+                if (allLines.length === 0) {
+                    log('Geen tekst in PDF gevonden, start OCR...');
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        try {
+                            updateProgress(50 + ((i-1) / pdf.numPages) * 30, `Pagina ${i} - OCR...`);
+                            
+                            const page = await pdf.getPage(i);
+                            
+                            const scale = 2.0;
+                            const viewport = page.getViewport({ scale });
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            
+                            ctx.fillStyle = '#FFFFFF';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                            
+                            await page.render({ canvasContext: ctx, viewport }).promise;
+                            
+                            if (tesseractWorker) {
+                                ocrText.textContent = `Pagina ${i} - OCR...`;
+                                const result = await tesseractWorker.recognize(canvas);
+                                const text = result.data.text;
+                                
+                                if (text.trim()) {
+                                    const lines = text.split('\n')
+                                        .map(l => l.trim())
+                                        .filter(l => l.length > 3);
+                                    
+                                    lines.forEach((line, idx) => {
+                                        const isDamage = damageKeywords.some(kw => line.toLowerCase().includes(kw));
+                                        allLines.push({
+                                            id: `p${i}-l${idx}`,
+                                            page: i,
+                                            text: line,
+                                            isDamage: isDamage,
+                                            source: 'ocr'
+                                        });
+                                    });
+                                    
+                                    log(`Pagina ${i} OCR: ${lines.length} regels`);
+                                }
+                            }
+                            
+                            page.cleanup();
+                        } catch (pageErr) {
+                            log(`OCR fout pagina ${i}: ${pageErr.message}`, 'error');
+                        }
+                    }
+                }
+                
                 updateProgress(85, 'Resultaten verwerken...');
                 
                 log(`Totaal: ${allLines.length} regels gevonden`);
                 
-                // Toon waarschuwing als we niets vinden
                 if (allLines.length === 0) {
                     warningBox.style.display = 'block';
                     warningText.textContent = 'Geen tekst herkend in de PDF. De PDF wordt ongewijzigd gedownload.';
                 }
                 
-                // Toon resultaten
                 displayResults(allLines);
                 
-                // Sla op
                 processedData = {
                     lines: allLines.filter(l => !l.isDamage),
                     allLines: allLines,
