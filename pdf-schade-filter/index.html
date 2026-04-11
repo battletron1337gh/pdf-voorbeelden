@@ -334,12 +334,21 @@
                 updateProgress(10, 'PDF laden...');
                 ocrText.textContent = 'PDF laden...';
                 
+                // Check of pdfjsLib beschikbaar is
+                if (typeof pdfjsLib === 'undefined') {
+                    throw new Error('PDF.js library niet geladen. Vernieuw de pagina.');
+                }
+                
                 // Laad PDF
                 const arrayBuffer = await currentFile.arrayBuffer();
                 const pdfData = new Uint8Array(arrayBuffer);
                 
+                log('PDF data geladen, grootte: ' + pdfData.length + ' bytes');
+                
                 // Gebruik PDF.js om pagina's te renderen
-                const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+                const pdf = await loadingTask.promise;
+                
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
                 
                 updateProgress(20, 'Pagina\'s voorbereiden voor OCR...');
@@ -349,38 +358,53 @@
                 
                 // Verwerk elke pagina
                 for (let i = 1; i <= pdf.numPages; i++) {
-                    const pageProgress = 20 + ((i / pdf.numPages) * 60);
-                    updateProgress(pageProgress, `Pagina ${i} van ${pdf.numPages} verwerken...`);
-                    ocrText.textContent = `Pagina ${i} van ${pdf.numPages} - OCR uitvoeren...`;
-                    
-                    const page = await pdf.getPage(i);
-                    
-                    // Render pagina naar canvas
-                    const viewport = page.getViewport({ scale: 2.0 });
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.width = viewport.width;
-                    canvas.height = viewport.height;
-                    
-                    await page.render({ canvasContext: context, viewport: viewport }).promise;
-                    
-                    // Voer OCR uit op de canvas
-                    if (tesseractWorker) {
-                        const { data: { text } } = await tesseractWorker.recognize(canvas);
+                    try {
+                        const pageProgress = 20 + ((i / pdf.numPages) * 60);
+                        updateProgress(pageProgress, `Pagina ${i} van ${pdf.numPages} verwerken...`);
+                        ocrText.textContent = `Pagina ${i} van ${pdf.numPages} - OCR uitvoeren...`;
                         
-                        // Parse de tekst naar regels
-                        const lines = parseTextToLines(text, i);
-                        extractedLines.push(...lines);
+                        log(`Pagina ${i} laden...`);
+                        const page = await pdf.getPage(i);
                         
-                        log(`Pagina ${i}: ${lines.length} regels gevonden`);
+                        // Render pagina naar canvas
+                        const viewport = page.getViewport({ scale: 1.5 });
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        
+                        log(`Pagina ${i} renderen...`);
+                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        
+                        // Voer OCR uit op de canvas
+                        if (tesseractWorker) {
+                            log(`Pagina ${i} OCR starten...`);
+                            const result = await tesseractWorker.recognize(canvas);
+                            const text = result.data.text;
+                            
+                            log(`Pagina ${i} OCR voltooid, tekst lengte: ${text.length}`);
+                            
+                            // Parse de tekst naar regels
+                            const lines = parseTextToLines(text, i);
+                            extractedLines.push(...lines);
+                            
+                            log(`Pagina ${i}: ${lines.length} regels gevonden`);
+                        } else {
+                            log('OCR worker niet beschikbaar!', 'error');
+                        }
+                        
+                        // Cleanup
+                        page.cleanup();
+                    } catch (pageError) {
+                        log(`Fout op pagina ${i}: ${pageError.message}`, 'error');
+                        console.error('Page error:', pageError);
                     }
-                    
-                    // Cleanup
-                    page.cleanup();
                 }
                 
                 updateProgress(85, 'Regels classificeren...');
                 ocrText.textContent = 'Regels analyseren...';
+                
+                log(`Totaal ${extractedLines.length} regels geëxtraheerd`);
                 
                 // Classificeer regels
                 const classifiedLines = classifyLines(extractedLines);
@@ -405,10 +429,11 @@
                 downloadBtn.style.display = 'inline-block';
                 
             } catch (error) {
-                log('Fout: ' + error.message, 'error');
+                console.error('Full error:', error);
+                log('Fout: ' + (error.message || error.toString()), 'error');
                 updateProgress(0, 'Fout opgetreden');
                 ocrStatus.classList.remove('loading');
-                ocrText.textContent = 'Fout: ' + error.message;
+                ocrText.textContent = 'Fout: ' + (error.message || 'Onbekende fout');
                 processBtn.disabled = false;
             }
         }
