@@ -409,6 +409,46 @@
                 // Classificeer regels
                 const classifiedLines = classifyLines(extractedLines);
                 
+                log(`Totaal ${classifiedLines.length} regels geclassificeerd`);
+                
+                if (classifiedLines.length === 0) {
+                    log('Geen regels gevonden! Toon ruwe OCR data...', 'error');
+                    // Fallback: toon alle OCR tekst als 1 regel per pagina
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        try {
+                            const page = await pdf.getPage(i);
+                            const viewport = page.getViewport({ scale: 1.5 });
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            await page.render({ canvasContext: context, viewport: viewport }).promise;
+                            
+                            if (tesseractWorker) {
+                                const result = await tesseractWorker.recognize(canvas);
+                                const text = result.data.text;
+                                
+                                // Splits op nieuwe regels en maak er regels van
+                                const rawLines = text.split('\n').filter(l => l.trim().length > 3);
+                                rawLines.forEach((line, idx) => {
+                                    classifiedLines.push({
+                                        id: `p${i}-l${idx}`,
+                                        page: i,
+                                        date: '',
+                                        text: line.trim(),
+                                        fullText: line.trim(),
+                                        raw: line,
+                                        isDamage: damageKeywords.some(kw => line.toLowerCase().includes(kw))
+                                    });
+                                });
+                            }
+                            page.cleanup();
+                        } catch (e) {
+                            log(`Fallback fout pagina ${i}: ${e.message}`, 'error');
+                        }
+                    }
+                }
+                
                 updateProgress(95, 'Resultaten voorbereiden...');
                 
                 // Toon resultaten
@@ -440,6 +480,10 @@
         
         function parseTextToLines(text, pageNum) {
             const lines = [];
+            
+            log(`Pagina ${pageNum} - Ruwe OCR tekst (${text.length} chars):`);
+            log(text.substring(0, 200) + '...');
+            
             const rawLines = text.split('\n').filter(line => line.trim());
             
             // Probeer datums en tekst te herkennen
@@ -447,7 +491,7 @@
             
             rawLines.forEach((line, idx) => {
                 const trimmed = line.trim();
-                if (trimmed.length < 5) return; // Skip te korte regels
+                if (trimmed.length < 3) return; // Skip te korte regels
                 
                 let date = '';
                 let content = trimmed;
@@ -468,6 +512,7 @@
                 });
             });
             
+            log(`Pagina ${pageNum} - ${lines.length} regels geparsed`);
             return lines;
         }
         
