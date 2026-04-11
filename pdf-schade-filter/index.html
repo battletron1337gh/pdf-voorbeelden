@@ -193,10 +193,13 @@
                             const minY = Math.min(...items.map(i => i.transform[5]));
                             const maxY = Math.max(...items.map(i => i.transform[5] + (i.height || 12)));
                             
+                            // Bereken de hoogte van de regel
+                            const rowHeight = maxY - minY;
+                            
                             damageRows.push({
                                 page: i,
                                 y: minY,
-                                height: maxY - minY + 10,
+                                height: rowHeight,
                                 text: items.map(i => i.str).join(' '),
                                 pageWidth: width,
                                 pageHeight: height
@@ -279,14 +282,15 @@
                     
                     for (const row of rows) {
                         // Converteer Y coordinaat (PDF.js Y is vanaf onderen)
-                        const pdfY = height - row.y - row.height + 5;
+                        // Voeg extra marge toe zodat ALLES bedekt is
+                        const pdfY = height - row.y - row.height - 15;
                         
-                        // Teken witte rechthoek over HELE pagina breedte
+                        // Teken witte rechthoek over HELE pagina breedte met extra hoogte
                         page.drawRectangle({
                             x: 0,
                             y: pdfY,
                             width: width,
-                            height: row.height + 5,
+                            height: row.height + 30,  // Extra hoogte voor zekerheid
                             color: PDFLib.rgb(1, 1, 1),
                             borderWidth: 0
                         });
