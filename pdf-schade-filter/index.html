@@ -213,18 +213,34 @@
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
                     
+                    // Groepeer items per regel (op basis van Y positie)
+                    const rows = {};
                     for (const item of textContent.items) {
-                        const text = item.str.toLowerCase();
-                        const hasDamage = damageKeywords.some(kw => text.includes(kw));
+                        const y = Math.round(item.transform[5] / 5) * 5; // Groepeer per 5 pixels
+                        if (!rows[y]) rows[y] = [];
+                        rows[y].push(item);
+                    }
+                    
+                    // Check elke rij op schade trefwoorden
+                    for (const [y, items] of Object.entries(rows)) {
+                        const rowText = items.map(i => i.str).join(' ').toLowerCase();
+                        const hasDamage = damageKeywords.some(kw => rowText.includes(kw));
                         
                         if (hasDamage) {
+                            // Bereken bounding box voor de hele rij
+                            const minX = Math.min(...items.map(i => i.transform[4]));
+                            const maxX = Math.max(...items.map(i => i.transform[4] + i.width));
+                            const minY = Math.min(...items.map(i => i.transform[5]));
+                            const maxY = Math.max(...items.map(i => i.transform[5] + (i.height || 12)));
+                            
                             damageItems.push({
                                 page: i,
-                                text: item.str,
-                                x: item.transform[4],
-                                y: item.transform[5],
-                                width: item.width,
-                                height: item.height || 12
+                                text: items.map(i => i.str).join(' '),
+                                x: minX - 10,
+                                y: minY - 5,
+                                width: maxX - minX + 20,
+                                height: maxY - minY + 10,
+                                items: items
                             });
                         }
                     }
