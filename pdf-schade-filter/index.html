@@ -123,7 +123,7 @@
             border-radius: 8px;
             font-family: 'Courier New', monospace;
             font-size: 0.85rem;
-            max-height: 200px;
+            max-height: 300px;
             overflow-y: auto;
             display: none;
         }
@@ -159,6 +159,14 @@
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .warning-box {
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            color: #e65100;
+        }
     </style>
 </head>
 <body>
@@ -189,6 +197,10 @@
             
             <div class="ocr-status" id="ocrStatus" style="display: none;">
                 <strong>OCR Status:</strong> <span id="ocrText">Initialiseren...</span>
+            </div>
+            
+            <div class="warning-box" id="warningBox" style="display: none;">
+                <strong>⚠️ Let op:</strong> <span id="warningText"></span>
             </div>
             
             <div class="keywords">
@@ -235,6 +247,8 @@
         const progressText = document.getElementById('progressText');
         const ocrStatus = document.getElementById('ocrStatus');
         const ocrText = document.getElementById('ocrText');
+        const warningBox = document.getElementById('warningBox');
+        const warningText = document.getElementById('warningText');
         const resultContainer = document.getElementById('resultContainer');
         const stats = document.getElementById('stats');
         const previewList = document.getElementById('previewList');
@@ -248,60 +262,50 @@
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            // Toon keywords
             keywordList.innerHTML = damageKeywords.map(kw => `<span class="keyword">${kw}</span>`).join('');
-            
-            // Init Tesseract worker
             initTesseract();
         });
         
         async function initTesseract() {
             try {
                 log('Tesseract OCR initialiseren...');
-                tesseractWorker = await Tesseract.createWorker('nld');
+                tesseractWorker = await Tesseract.createWorker('nld', 1, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            ocrText.textContent = `OCR: ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
+                });
                 log('OCR klaar!', 'success');
             } catch (err) {
                 log('OCR init fout: ' + err.message, 'error');
             }
         }
         
-        // Event Listeners
         uploadArea.addEventListener('click', () => fileInput.click());
-        
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-        
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-        
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0 && files[0].type === 'application/pdf') {
-                handleFile(files[0]);
-            }
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
         });
-        
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFile(e.target.files[0]);
-            }
-        });
-        
+        fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
         processBtn.addEventListener('click', processPDF);
         downloadBtn.addEventListener('click', downloadPDF);
         
         function handleFile(file) {
+            if (file.type !== 'application/pdf') {
+                alert('Selecteer een PDF bestand');
+                return;
+            }
             currentFile = file;
             fileName.textContent = file.name;
             fileInfo.classList.add('show');
             processBtn.disabled = false;
             resultContainer.classList.remove('show');
             downloadBtn.style.display = 'none';
+            warningBox.style.display = 'none';
             log('Bestand geselecteerd: ' + file.name, 'success');
         }
         
@@ -328,238 +332,151 @@
             ocrStatus.classList.add('loading');
             resultContainer.classList.remove('show');
             downloadBtn.style.display = 'none';
+            warningBox.style.display = 'none';
             
             try {
                 log('Start PDF verwerking...');
                 updateProgress(10, 'PDF laden...');
-                ocrText.textContent = 'PDF laden...';
                 
-                // Check of pdfjsLib beschikbaar is
-                if (typeof pdfjsLib === 'undefined') {
-                    throw new Error('PDF.js library niet geladen. Vernieuw de pagina.');
-                }
-                
-                // Laad PDF
                 const arrayBuffer = await currentFile.arrayBuffer();
                 const pdfData = new Uint8Array(arrayBuffer);
                 
-                log('PDF data geladen, grootte: ' + pdfData.length + ' bytes');
+                log('PDF data geladen: ' + pdfData.length + ' bytes');
                 
-                // Gebruik PDF.js om pagina's te renderen
-                const loadingTask = pdfjsLib.getDocument({ data: pdfData });
-                const pdf = await loadingTask.promise;
-                
+                // Laad met PDF.js
+                const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
                 
-                updateProgress(20, 'Pagina\'s voorbereiden voor OCR...');
-                ocrText.textContent = 'Pagina\'s analyseren...';
+                updateProgress(20, 'OCR voorbereiden...');
                 
-                const extractedLines = [];
+                const allLines = [];
                 
                 // Verwerk elke pagina
                 for (let i = 1; i <= pdf.numPages; i++) {
                     try {
-                        const pageProgress = 20 + ((i / pdf.numPages) * 60);
-                        updateProgress(pageProgress, `Pagina ${i} van ${pdf.numPages} verwerken...`);
-                        ocrText.textContent = `Pagina ${i} van ${pdf.numPages} - OCR uitvoeren...`;
+                        updateProgress(20 + ((i-1) / pdf.numPages) * 60, `Pagina ${i} van ${pdf.numPages}...`);
                         
-                        log(`Pagina ${i} laden...`);
                         const page = await pdf.getPage(i);
                         
-                        // Render pagina naar canvas
-                        const viewport = page.getViewport({ scale: 1.5 });
+                        // Render met HOGE resolutie voor betere OCR
+                        const scale = 3.0; // Hogere resolutie
+                        const viewport = page.getViewport({ scale });
                         const canvas = document.createElement('canvas');
-                        const context = canvas.getContext('2d');
+                        const ctx = canvas.getContext('2d');
                         canvas.width = viewport.width;
                         canvas.height = viewport.height;
                         
-                        log(`Pagina ${i} renderen...`);
-                        await page.render({ canvasContext: context, viewport: viewport }).promise;
+                        // Witte achtergrond voor betere contrast
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
                         
-                        // Voer OCR uit op de canvas
+                        await page.render({ canvasContext: ctx, viewport }).promise;
+                        
+                        log(`Pagina ${i} gerenderd: ${canvas.width}x${canvas.height}`);
+                        
+                        // OCR
                         if (tesseractWorker) {
-                            log(`Pagina ${i} OCR starten...`);
+                            ocrText.textContent = `Pagina ${i} - OCR bezig...`;
                             const result = await tesseractWorker.recognize(canvas);
                             const text = result.data.text;
                             
-                            log(`Pagina ${i} OCR voltooid, tekst lengte: ${text.length}`);
+                            log(`Pagina ${i} OCR: ${text.length} tekens`);
                             
-                            // Parse de tekst naar regels
-                            const lines = parseTextToLines(text, i);
-                            extractedLines.push(...lines);
-                            
-                            log(`Pagina ${i}: ${lines.length} regels gevonden`);
-                        } else {
-                            log('OCR worker niet beschikbaar!', 'error');
-                        }
-                        
-                        // Cleanup
-                        page.cleanup();
-                    } catch (pageError) {
-                        log(`Fout op pagina ${i}: ${pageError.message}`, 'error');
-                        console.error('Page error:', pageError);
-                    }
-                }
-                
-                updateProgress(85, 'Regels classificeren...');
-                ocrText.textContent = 'Regels analyseren...';
-                
-                log(`Totaal ${extractedLines.length} regels geëxtraheerd`);
-                
-                // Classificeer regels
-                const classifiedLines = classifyLines(extractedLines);
-                
-                log(`Totaal ${classifiedLines.length} regels geclassificeerd`);
-                
-                if (classifiedLines.length === 0) {
-                    log('Geen regels gevonden! Toon ruwe OCR data...', 'error');
-                    // Fallback: toon alle OCR tekst als 1 regel per pagina
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        try {
-                            const page = await pdf.getPage(i);
-                            const viewport = page.getViewport({ scale: 1.5 });
-                            const canvas = document.createElement('canvas');
-                            const context = canvas.getContext('2d');
-                            canvas.width = viewport.width;
-                            canvas.height = viewport.height;
-                            await page.render({ canvasContext: context, viewport: viewport }).promise;
-                            
-                            if (tesseractWorker) {
-                                const result = await tesseractWorker.recognize(canvas);
-                                const text = result.data.text;
+                            if (text.trim()) {
+                                // Splits in regels
+                                const lines = text.split('\n')
+                                    .map(l => l.trim())
+                                    .filter(l => l.length > 2);
                                 
-                                // Splits op nieuwe regels en maak er regels van
-                                const rawLines = text.split('\n').filter(l => l.trim().length > 3);
-                                rawLines.forEach((line, idx) => {
-                                    classifiedLines.push({
+                                lines.forEach((line, idx) => {
+                                    const lowerLine = line.toLowerCase();
+                                    const isDamage = damageKeywords.some(kw => lowerLine.includes(kw));
+                                    
+                                    allLines.push({
                                         id: `p${i}-l${idx}`,
                                         page: i,
-                                        date: '',
-                                        text: line.trim(),
-                                        fullText: line.trim(),
-                                        raw: line,
-                                        isDamage: damageKeywords.some(kw => line.toLowerCase().includes(kw))
+                                        text: line,
+                                        isDamage: isDamage
                                     });
                                 });
+                                
+                                log(`Pagina ${i}: ${lines.length} regels`);
                             }
-                            page.cleanup();
-                        } catch (e) {
-                            log(`Fallback fout pagina ${i}: ${e.message}`, 'error');
                         }
+                        
+                        page.cleanup();
+                    } catch (pageErr) {
+                        log(`Fout pagina ${i}: ${pageErr.message}`, 'error');
                     }
                 }
                 
-                updateProgress(95, 'Resultaten voorbereiden...');
+                updateProgress(85, 'Resultaten verwerken...');
+                
+                log(`Totaal: ${allLines.length} regels gevonden`);
+                
+                // Toon waarschuwing als we niets vinden
+                if (allLines.length === 0) {
+                    warningBox.style.display = 'block';
+                    warningText.textContent = 'Geen tekst herkend in de PDF. De PDF wordt ongewijzigd gedownload.';
+                }
                 
                 // Toon resultaten
-                displayResults(classifiedLines);
+                displayResults(allLines);
                 
-                // Sla op voor download - ALTIJD vullen, zelfs als leeg
-                const keptLines = classifiedLines.filter(l => !l.isDamage);
+                // Sla op
                 processedData = {
-                    lines: keptLines,
-                    allLines: classifiedLines,
+                    lines: allLines.filter(l => !l.isDamage),
+                    allLines: allLines,
                     originalName: currentFile.name,
-                    originalPdfBytes: pdfData // Bewaar originele PDF bytes
+                    originalPdfBytes: pdfData
                 };
-                
-                log(`Data opgeslagen: ${keptLines.length} regels om te downloaden`);
                 
                 updateProgress(100, 'Klaar!');
                 ocrStatus.classList.remove('loading');
-                ocrText.textContent = 'Verwerking voltooid!';
-                log('Verwerking voltooid!', 'success');
+                ocrText.textContent = `Klaar! ${allLines.length} regels gevonden`;
                 
                 resultContainer.classList.add('show');
                 downloadBtn.style.display = 'inline-block';
+                processBtn.disabled = false;
                 
             } catch (error) {
-                console.error('Full error:', error);
-                log('Fout: ' + (error.message || error.toString()), 'error');
-                updateProgress(0, 'Fout opgetreden');
+                console.error(error);
+                log('Fout: ' + error.message, 'error');
+                updateProgress(0, 'Fout');
                 ocrStatus.classList.remove('loading');
-                ocrText.textContent = 'Fout: ' + (error.message || 'Onbekende fout');
                 processBtn.disabled = false;
             }
         }
         
-        function parseTextToLines(text, pageNum) {
-            const lines = [];
-            
-            log(`Pagina ${pageNum} - Ruwe OCR tekst (${text.length} chars):`);
-            log(text.substring(0, 200) + '...');
-            
-            const rawLines = text.split('\n').filter(line => line.trim());
-            
-            // Probeer datums en tekst te herkennen
-            const datePattern = /(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{2,4})/;
-            
-            rawLines.forEach((line, idx) => {
-                const trimmed = line.trim();
-                if (trimmed.length < 3) return; // Skip te korte regels
-                
-                let date = '';
-                let content = trimmed;
-                
-                const dateMatch = trimmed.match(datePattern);
-                if (dateMatch) {
-                    date = dateMatch[1];
-                    content = trimmed.replace(date, '').trim();
-                }
-                
-                lines.push({
-                    id: `p${pageNum}-l${idx}`,
-                    page: pageNum,
-                    date: date,
-                    text: content,
-                    fullText: trimmed,
-                    raw: line
-                });
-            });
-            
-            log(`Pagina ${pageNum} - ${lines.length} regels geparsed`);
-            return lines;
-        }
-        
-        function classifyLines(lines) {
-            return lines.map(line => {
-                const lowerText = line.fullText.toLowerCase();
-                const hasDamageKeyword = damageKeywords.some(kw => lowerText.includes(kw.toLowerCase()));
-                
-                return {
-                    ...line,
-                    isDamage: hasDamageKeyword
-                };
-            });
-        }
-        
         function displayResults(lines) {
-            const damageLines = lines.filter(l => l.isDamage);
-            const keepLines = lines.filter(l => !l.isDamage);
+            const damageCount = lines.filter(l => l.isDamage).length;
+            const keepCount = lines.filter(l => !l.isDamage).length;
             
-            // Stats
             stats.innerHTML = `
                 <div class="stat-box">
                     <div class="stat-number">${lines.length}</div>
                     <div class="stat-label">Totaal regels</div>
                 </div>
                 <div class="stat-box">
-                    <div class="stat-number" style="color: #f44336;">${damageLines.length}</div>
-                    <div class="stat-label">Schade regels</div>
+                    <div class="stat-number" style="color: #f44336;">${damageCount}</div>
+                    <div class="stat-label">Schade</div>
                 </div>
                 <div class="stat-box">
-                    <div class="stat-number" style="color: #4caf50;">${keepLines.length}</div>
-                    <div class="stat-label">Onderhoud regels</div>
+                    <div class="stat-number" style="color: #4caf50;">${keepCount}</div>
+                    <div class="stat-label">Onderhoud</div>
                 </div>
             `;
             
-            // Preview (toon alle regels, markeer schade)
+            if (lines.length === 0) {
+                previewList.innerHTML = '<p style="text-align: center; color: #999;">Geen tekst herkend</p>';
+                return;
+            }
+            
             previewList.innerHTML = lines.map(line => `
                 <div class="preview-item ${line.isDamage ? 'damage' : 'keep'}">
-                    <div class="preview-date">${line.date || 'Geen datum'} (Pagina ${line.page})</div>
-                    <div class="preview-text">${escapeHtml(line.fullText)}</div>
+                    <div class="preview-text">${escapeHtml(line.text)}</div>
                     <div class="preview-tag" style="color: ${line.isDamage ? '#f44336' : '#4caf50'}">
-                        ${line.isDamage ? '🚫 Wordt verwijderd' : '✓ Behouden'}
+                        ${line.isDamage ? '🚫 Verwijderd' : '✓ Behouden'} (Pagina ${line.page})
                     </div>
                 </div>
             `).join('');
@@ -572,162 +489,116 @@
         }
         
         async function downloadPDF() {
-            console.log('Download clicked, processedData:', processedData);
-            
             if (!processedData) {
-                alert('Geen data beschikbaar. Verwerk eerst een PDF.');
+                alert('Geen data beschikbaar');
                 return;
             }
             
-            // Als we geen tekst hebben herkend, kopieer dan gewoon de originele PDF
-            if (processedData.lines.length === 0 && processedData.originalPdfBytes) {
-                log('Geen tekst herkend, originele PDF wordt gedownload...');
-                
-                const blob = new Blob([processedData.originalPdfBytes], { type: 'application/pdf' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'onderhoudshistorie.pdf';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                
-                log('Originele PDF gedownload', 'success');
-                return;
-            }
-            
-            if (processedData.lines.length === 0) {
-                alert('Geen onderhoudsregels gevonden om te downloaden. Alle regels waren schade-regels of er is geen tekst herkend.');
-                return;
-            }
-            
-            log('PDF genereren...');
             downloadBtn.disabled = true;
             downloadBtn.textContent = 'Bezig...';
             
             try {
+                // Als we geen regels hebben, download origineel
+                if (processedData.lines.length === 0) {
+                    log('Download originele PDF...');
+                    const blob = new Blob([processedData.originalPdfBytes], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = processedData.originalName;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    log('Origineel gedownload', 'success');
+                    return;
+                }
+                
+                // Maak nieuwe PDF met alleen onderhoudsregels
                 const { PDFDocument, rgb, StandardFonts } = PDFLib;
                 const newPdf = await PDFDocument.create();
-                const helveticaFont = await newPdf.embedFont(StandardFonts.Helvetica);
-                const helveticaBold = await newPdf.embedFont(StandardFonts.HelveticaBold);
+                const font = await newPdf.embedFont(StandardFonts.Helvetica);
+                const fontBold = await newPdf.embedFont(StandardFonts.HelveticaBold);
                 
-                let page = newPdf.addPage([595, 842]); // A4
+                let page = newPdf.addPage([595, 842]);
                 let y = 800;
                 
                 // Titel
                 page.drawText('ONDERHOUDSHISTORIE (GEFILTERD)', {
-                    x: 50,
-                    y: y,
-                    size: 18,
-                    font: helveticaBold,
-                    color: rgb(0.2, 0.2, 0.2)
+                    x: 50, y: y, size: 16, font: fontBold, color: rgb(0.2, 0.2, 0.2)
                 });
-                
                 y -= 25;
                 
-                // Subtitel
                 page.drawText(`Origineel: ${processedData.originalName}`, {
-                    x: 50,
-                    y: y,
-                    size: 10,
-                    font: helveticaFont,
-                    color: rgb(0.4, 0.4, 0.4)
+                    x: 50, y: y, size: 9, font: font, color: rgb(0.4, 0.4, 0.4)
                 });
-                
                 y -= 15;
                 
-                page.drawText(`Gefilterd op: ${new Date().toLocaleDateString('nl-NL')} - ${processedData.lines.length} regels`, {
-                    x: 50,
-                    y: y,
-                    size: 10,
-                    font: helveticaFont,
-                    color: rgb(0.4, 0.4, 0.4)
+                page.drawText(`${processedData.lines.length} regels | ${new Date().toLocaleDateString('nl-NL')}`, {
+                    x: 50, y: y, size: 9, font: font, color: rgb(0.4, 0.4, 0.4)
                 });
-                
-                y -= 30;
-                
-                // Lijn
-                page.drawLine({
-                    start: { x: 50, y: y },
-                    end: { x: 545, y: y },
-                    thickness: 1,
-                    color: rgb(0.8, 0.8, 0.8)
-                });
-                
                 y -= 25;
                 
+                // Lijn
+                page.drawLine({ start: { x: 50, y }, end: { x: 545, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+                y -= 20;
+                
                 // Regels
-                processedData.lines.forEach((line) => {
+                for (const line of processedData.lines) {
                     if (y < 60) {
-                        // Nieuwe pagina
                         page = newPdf.addPage([595, 842]);
                         y = 800;
                     }
                     
-                    const dateText = line.date ? `[${line.date}] ` : '';
-                    const fullText = dateText + line.text;
-                    
-                    // Wrap text if too long
-                    const maxWidth = 495;
-                    const words = fullText.split(' ');
+                    const words = line.text.split(' ');
                     let currentLine = '';
-                    const lines = [];
+                    const wrappedLines = [];
                     
-                    words.forEach(word => {
-                        const testLine = currentLine + word + ' ';
-                        const width = helveticaFont.widthOfTextAtSize(testLine, 11);
-                        if (width > maxWidth && currentLine) {
-                            lines.push(currentLine.trim());
+                    for (const word of words) {
+                        const test = currentLine + word + ' ';
+                        if (font.widthOfTextAtSize(test, 10) > 495 && currentLine) {
+                            wrappedLines.push(currentLine.trim());
                             currentLine = word + ' ';
                         } else {
-                            currentLine = testLine;
+                            currentLine = test;
                         }
-                    });
-                    lines.push(currentLine.trim());
+                    }
+                    wrappedLines.push(currentLine.trim());
                     
-                    lines.forEach((textLine, idx) => {
+                    wrappedLines.forEach((textLine, i) => {
                         page.drawText(textLine, {
-                            x: idx === 0 ? 50 : 70,
+                            x: i === 0 ? 50 : 65,
                             y: y,
-                            size: 11,
-                            font: helveticaFont,
+                            size: 10,
+                            font: font,
                             color: rgb(0.1, 0.1, 0.1)
                         });
-                        y -= 14;
+                        y -= 13;
                     });
                     
-                    y -= 5; // Extra spacing between entries
-                });
+                    y -= 5;
+                }
                 
-                // Download
                 const pdfBytes = await newPdf.save();
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
-                
                 const link = document.createElement('a');
                 link.href = url;
                 link.download = 'onderhoudshistorie_gefilterd.pdf';
-                document.body.appendChild(link);
                 link.click();
-                document.body.removeChild(link);
-                
                 URL.revokeObjectURL(url);
-                log('PDF gedownload!', 'success');
                 
-            } catch (error) {
-                log('Fout bij genereren PDF: ' + error.message, 'error');
+                log('Gefilterde PDF gedownload!', 'success');
+                
+            } catch (err) {
+                log('Download fout: ' + err.message, 'error');
+                alert('Fout bij downloaden: ' + err.message);
             } finally {
                 downloadBtn.disabled = false;
                 downloadBtn.textContent = '⬇️ Download gefilterde PDF';
             }
         }
         
-        // Cleanup bij sluiten
         window.addEventListener('beforeunload', async () => {
-            if (tesseractWorker) {
-                await tesseractWorker.terminate();
-            }
+            if (tesseractWorker) await tesseractWorker.terminate();
         });
     </script>
 </body>
