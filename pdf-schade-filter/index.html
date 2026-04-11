@@ -281,17 +281,20 @@
                     rows.sort((a, b) => b.y - a.y);
                     
                     for (const row of rows) {
-                        // Converteer Y coordinaat (PDF.js Y is vanaf onderen)
-                        // PDF.js Y is vanaf onderen, pdf-lib Y is ook vanaf onderen
-                        // row.y is de onderkant van de tekst in PDF.js coordinaten
-                        const pdfY = height - row.y - 10;
+                        // row.y is de baseline van de tekst in PDF.js (vanaf onderen)
+                        // We moeten dit converteren naar pdf-lib coordinaten
+                        // De bovenkant van de regel is row.y + row.height
+                        // In pdf-lib is Y=0 onderaan, dus we moeten omdraaien
                         
-                        // Teken witte rechthoek - alleen de regel zelf, niet erboven/eronder
+                        const rowTop = row.y + row.height;  // Bovenkant regel
+                        const pdfY = height - rowTop;  // Converteer naar pdf-lib
+                        
+                        // Teken witte rechthoek exact over de regel
                         page.drawRectangle({
                             x: 0,
-                            y: pdfY,
+                            y: pdfY - 5,  // Iets lager voor zekerheid
                             width: width,
-                            height: row.height + 20,  // Iets extra voor zekerheid
+                            height: row.height + 10,  // Iets extra hoogte
                             color: PDFLib.rgb(1, 1, 1),
                             borderWidth: 0
                         });
