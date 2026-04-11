@@ -198,10 +198,13 @@
             try {
                 updateProgress(10, 'PDF laden...');
                 
+                // Lees de file
                 const arrayBuffer = await currentFile.arrayBuffer();
-                originalPdfBytes = arrayBuffer; // Bewaar als ArrayBuffer
                 
-                const pdf = await pdfjsLib.getDocument({ data: originalPdfBytes }).promise;
+                // Maak een kopie voor PDF.js (anders wordt de buffer detached)
+                const pdfData = new Uint8Array(arrayBuffer);
+                
+                const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
                 
                 for (let i = 1; i <= pdf.numPages; i++) {
@@ -270,16 +273,17 @@
         }
         
         async function downloadCleanPDF() {
-            if (!originalPdfBytes) return;
+            if (!currentFile) return;
             
             document.getElementById('downloadBtn').disabled = true;
             document.getElementById('downloadBtn').textContent = 'Bezig...';
             
             try {
-                log('PDF aanmaken...');
+                log('PDF opnieuw laden...');
                 
-                // Laad originele PDF - gebruik de bytes direct
-                const pdfDoc = await PDFLib.PDFDocument.load(originalPdfBytes.buffer || originalPdfBytes);
+                // Lees file opnieuw (ArrayBuffer is al gebruikt door PDF.js)
+                const arrayBuffer = await currentFile.arrayBuffer();
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
                 const pages = pdfDoc.getPages();
                 
                 // Voor elke pagina met schade items
