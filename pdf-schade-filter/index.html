@@ -454,11 +454,15 @@
                 // Toon resultaten
                 displayResults(classifiedLines);
                 
-                // Sla op voor download
+                // Sla op voor download - ALTIJD vullen, zelfs als leeg
+                const keptLines = classifiedLines.filter(l => !l.isDamage);
                 processedData = {
-                    lines: classifiedLines.filter(l => !l.isDamage),
+                    lines: keptLines,
+                    allLines: classifiedLines,
                     originalName: currentFile.name
                 };
+                
+                log(`Data opgeslagen: ${keptLines.length} regels om te downloaden`);
                 
                 updateProgress(100, 'Klaar!');
                 ocrStatus.classList.remove('loading');
@@ -567,8 +571,15 @@
         }
         
         async function downloadPDF() {
-            if (!processedData || processedData.lines.length === 0) {
-                alert('Geen data om te downloaden');
+            console.log('Download clicked, processedData:', processedData);
+            
+            if (!processedData) {
+                alert('Geen data beschikbaar. Verwerk eerst een PDF.');
+                return;
+            }
+            
+            if (processedData.lines.length === 0) {
+                alert('Geen onderhoudsregels gevonden om te downloaden. Alle regels waren schade-regels of er is geen tekst herkend.');
                 return;
             }
             
