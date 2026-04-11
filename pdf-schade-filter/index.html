@@ -16,13 +16,12 @@
         }
         .container { max-width: 900px; margin: 0 auto; }
         .header { text-align: center; margin-bottom: 40px; color: white; }
-        .header h1 { font-size: 2.5rem; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
         .card {
             background: white;
             border-radius: 16px;
             padding: 30px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            margin-bottom: 20px;
         }
         .upload-area {
             border: 3px dashed #667eea;
@@ -30,7 +29,6 @@
             padding: 60px 40px;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s ease;
             background: #f8f9ff;
         }
         .upload-area:hover { border-color: #764ba2; background: #f0f2ff; }
@@ -62,21 +60,6 @@
             width: 0%;
             transition: width 0.3s ease;
         }
-        .keywords {
-            margin-top: 20px;
-            padding: 15px;
-            background: #fff3e0;
-            border-radius: 8px;
-        }
-        .keyword {
-            display: inline-block;
-            background: #ff9800;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 16px;
-            font-size: 0.85rem;
-            margin: 4px;
-        }
         .preview-area {
             background: #f5f5f5;
             border-radius: 8px;
@@ -90,17 +73,15 @@
             border-radius: 8px;
             padding: 15px;
             margin-bottom: 10px;
-            border-left: 4px solid #ccc;
+            border-left: 4px solid #f44336;
         }
-        .preview-item.damage { border-left-color: #f44336; background: #ffebee; }
-        .preview-item.keep { border-left-color: #4caf50; background: #e8f5e9; }
         .log-container {
             margin-top: 20px;
             padding: 15px;
             background: #263238;
             color: #aed581;
             border-radius: 8px;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             font-size: 0.85rem;
             max-height: 200px;
             overflow-y: auto;
@@ -112,14 +93,13 @@
     <div class="container">
         <div class="header">
             <h1>🔧 PDF Schade Filter</h1>
-            <p>Verwijder schade-regels uit onderhoudshistorie PDF's</p>
+            <p>Verwijder schade-regels uit onderhoudshistorie</p>
         </div>
         
         <div class="card">
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📄</div>
                 <div style="font-size: 1.2rem;">Klik om PDF te uploaden</div>
-                <div style="color: #666; font-size: 0.9rem;">Onderhoudshistorie PDF</div>
             </div>
             <input type="file" id="fileInput" accept=".pdf">
             
@@ -130,16 +110,11 @@
                 <div class="progress-text" id="progressText">Bezig...</div>
             </div>
             
-            <div class="keywords">
-                <h3>🚫 Herkende schade-trefwoorden:</h3>
-                <div id="keywordList"></div>
-            </div>
-            
             <button class="btn" id="processBtn" disabled>Analyseer PDF</button>
-            <button class="btn" id="downloadBtn" style="display: none;">⬇️ Download PDF zonder schade</button>
+            <button class="btn" id="downloadBtn" style="display: none;">⬇️ Download PDF</button>
             
             <div class="preview-area" id="previewArea" style="display: none;">
-                <h3>Gevonden regels:</h3>
+                <h3>Te verwijderen regels:</h3>
                 <div id="previewList"></div>
             </div>
             
@@ -150,18 +125,10 @@
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         
-        const damageKeywords = [
-            'schade', 'botsing', 'collision', 'reparatie', 'herstel',
-            'damage', 'ongeval', 'accident', 'ramp', 'totaal',
-            'aanrijding', 'aanvaring', 'impact', 'plaatwerk', 'lakwerk'
-        ];
+        const damageKeywords = ['schade', 'botsing', 'collision', 'reparatie', 'herstel', 'damage', 'ongeval', 'accident', 'aanrijding', 'plaatwerk', 'lakwerk'];
         
         let currentFile = null;
-        let damageItems = [];
-        let originalPdfBytes = null;
-        
-        document.getElementById('keywordList').innerHTML = 
-            damageKeywords.map(kw => `<span class="keyword">${kw}</span>`).join('');
+        let damageRows = [];
         
         document.getElementById('uploadArea').addEventListener('click', () => 
             document.getElementById('fileInput').click());
@@ -175,12 +142,12 @@
         });
         
         document.getElementById('processBtn').addEventListener('click', analyzePDF);
-        document.getElementById('downloadBtn').addEventListener('click', downloadCleanPDF);
+        document.getElementById('downloadBtn').addEventListener('click', downloadPDF);
         
         function log(msg) {
             const container = document.getElementById('logContainer');
             container.style.display = 'block';
-            container.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            container.innerHTML += `<div>${msg}</div>`;
         }
         
         function updateProgress(pct, text) {
@@ -193,54 +160,46 @@
             if (!currentFile) return;
             
             document.getElementById('processBtn').disabled = true;
-            damageItems = [];
+            damageRows = [];
             
             try {
                 updateProgress(10, 'PDF laden...');
                 
-                // Lees de file
                 const arrayBuffer = await currentFile.arrayBuffer();
-                
-                // Maak een kopie voor PDF.js (anders wordt de buffer detached)
                 const pdfData = new Uint8Array(arrayBuffer);
                 
                 const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-                log(`PDF geladen: ${pdf.numPages} pagina's`);
+                log(`PDF: ${pdf.numPages} pagina's`);
                 
                 for (let i = 1; i <= pdf.numPages; i++) {
-                    updateProgress(10 + (i / pdf.numPages) * 70, `Pagina ${i} analyseren...`);
+                    updateProgress(10 + (i / pdf.numPages) * 70, `Pagina ${i}...`);
                     
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
+                    const { width, height } = page.getViewport({ scale: 1 });
                     
-                    // Groepeer items per regel (op basis van Y positie)
+                    // Groepeer per regel
                     const rows = {};
                     for (const item of textContent.items) {
-                        const y = Math.round(item.transform[5] / 5) * 5; // Groepeer per 5 pixels
+                        const y = Math.round(item.transform[5]);
                         if (!rows[y]) rows[y] = [];
                         rows[y].push(item);
                     }
                     
-                    // Check elke rij op schade trefwoorden
+                    // Vind schade regels
                     for (const [y, items] of Object.entries(rows)) {
                         const rowText = items.map(i => i.str).join(' ').toLowerCase();
-                        const hasDamage = damageKeywords.some(kw => rowText.includes(kw));
-                        
-                        if (hasDamage) {
-                            // Bereken bounding box voor de hele rij
-                            const minX = Math.min(...items.map(i => i.transform[4]));
-                            const maxX = Math.max(...items.map(i => i.transform[4] + i.width));
+                        if (damageKeywords.some(kw => rowText.includes(kw))) {
                             const minY = Math.min(...items.map(i => i.transform[5]));
                             const maxY = Math.max(...items.map(i => i.transform[5] + (i.height || 12)));
                             
-                            damageItems.push({
+                            damageRows.push({
                                 page: i,
-                                text: items.map(i => i.str).join(' '),
-                                x: minX - 10,
-                                y: minY - 5,
-                                width: maxX - minX + 20,
+                                y: minY,
                                 height: maxY - minY + 10,
-                                items: items
+                                text: items.map(i => i.str).join(' '),
+                                pageWidth: width,
+                                pageHeight: height
                             });
                         }
                     }
@@ -249,9 +208,7 @@
                 }
                 
                 updateProgress(100, 'Klaar!');
-                
                 showResults();
-                
                 document.getElementById('downloadBtn').style.display = 'inline-block';
                 document.getElementById('processBtn').disabled = false;
                 
@@ -267,68 +224,75 @@
             
             preview.style.display = 'block';
             
-            if (damageItems.length === 0) {
+            if (damageRows.length === 0) {
                 list.innerHTML = '<p>✅ Geen schade-regels gevonden!</p>';
                 return;
             }
             
-            list.innerHTML = damageItems.map(item => `
-                <div class="preview-item damage">
-                    <strong>Pagina ${item.page}:</strong> ${escapeHtml(item.text)}
-                    <br><small style="color: #666;">Positie: ${Math.round(item.x)}, ${Math.round(item.y)}</small>
+            list.innerHTML = damageRows.map(row => `
+                <div class="preview-item">
+                    <strong>Pagina ${row.page}:</strong> ${row.text.substring(0, 100)}...
                 </div>
             `).join('');
             
-            log(`${damageItems.length} schade items gevonden`);
+            log(`${damageRows.length} regels gevonden`);
         }
         
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        async function downloadCleanPDF() {
-            if (!currentFile) return;
+        async function downloadPDF() {
+            if (!currentFile || damageRows.length === 0) {
+                // Geen schade, download origineel
+                if (currentFile) {
+                    const url = URL.createObjectURL(currentFile);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = currentFile.name;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                }
+                return;
+            }
             
             document.getElementById('downloadBtn').disabled = true;
             document.getElementById('downloadBtn').textContent = 'Bezig...';
             
             try {
-                log('PDF opnieuw laden...');
+                log('PDF maken...');
                 
-                // Lees file opnieuw (ArrayBuffer is al gebruikt door PDF.js)
+                // Laad originele PDF
                 const arrayBuffer = await currentFile.arrayBuffer();
                 const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
-                const pages = pdfDoc.getPages();
                 
-                // Voor elke pagina met schade items
-                const pagesWithDamage = [...new Set(damageItems.map(i => i.page))];
+                // Groepeer damage rows per pagina
+                const rowsByPage = {};
+                for (const row of damageRows) {
+                    if (!rowsByPage[row.page]) rowsByPage[row.page] = [];
+                    rowsByPage[row.page].push(row);
+                }
                 
-                for (const pageNum of pagesWithDamage) {
-                    const page = pages[pageNum - 1];
+                // Voor elke pagina met schade
+                for (const [pageNum, rows] of Object.entries(rowsByPage)) {
+                    const page = pdfDoc.getPages()[parseInt(pageNum) - 1];
                     const { width, height } = page.getSize();
                     
-                    // Vind alle schade items op deze pagina
-                    const itemsOnPage = damageItems.filter(i => i.page === pageNum);
+                    // Sorteer van boven naar beneden
+                    rows.sort((a, b) => b.y - a.y);
                     
-                    for (const item of itemsOnPage) {
-                        // Teken witte rechthoek over de schade tekst
-                        // PDF coördinaten: y is vanaf onderen, dus moeten we omrekenen
-                        const pdfY = height - item.y - (item.height || 12);
+                    for (const row of rows) {
+                        // Converteer Y coordinaat (PDF.js Y is vanaf onderen)
+                        const pdfY = height - row.y - row.height + 5;
                         
+                        // Teken witte rechthoek over HELE pagina breedte
                         page.drawRectangle({
-                            x: item.x - 2,
-                            y: pdfY - 2,
-                            width: item.width + 4,
-                            height: (item.height || 12) + 4,
-                            color: PDFLib.rgb(1, 1, 1), // Wit
-                            borderColor: PDFLib.rgb(1, 1, 1),
-                            borderWidth: 0,
+                            x: 0,
+                            y: pdfY,
+                            width: width,
+                            height: row.height + 5,
+                            color: PDFLib.rgb(1, 1, 1),
+                            borderWidth: 0
                         });
                     }
                     
-                    log(`Pagina ${pageNum}: ${itemsOnPage.length} items verwijderd`);
+                    log(`Pagina ${pageNum}: ${rows.length} regels verwijderd`);
                 }
                 
                 // Sla op
@@ -338,17 +302,17 @@
                 
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = 'onderhoudshistorie_zonder_schade.pdf';
+                link.download = 'onderhoudshistorie_schoon.pdf';
                 link.click();
                 
                 URL.revokeObjectURL(url);
-                log('PDF gedownload!', 'success');
+                log('Klaar!', 'success');
                 
             } catch (err) {
                 log('Fout: ' + err.message);
             } finally {
                 document.getElementById('downloadBtn').disabled = false;
-                document.getElementById('downloadBtn').textContent = '⬇️ Download PDF zonder schade';
+                document.getElementById('downloadBtn').textContent = '⬇️ Download PDF';
             }
         }
     </script>
