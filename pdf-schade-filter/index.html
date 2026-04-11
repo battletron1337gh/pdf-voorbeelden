@@ -282,15 +282,15 @@
                     
                     for (const row of rows) {
                         // Converteer Y coordinaat (PDF.js Y is vanaf onderen)
-                        // Voeg extra marge toe zodat ALLES bedekt is
-                        const pdfY = height - row.y - row.height - 15;
+                        // Nog meer marge toegevoegd
+                        const pdfY = height - row.y - row.height - 25;
                         
-                        // Teken witte rechthoek over HELE pagina breedte met extra hoogte
+                        // Teken witte rechthoek over HELE pagina breedte met NOG meer hoogte
                         page.drawRectangle({
-                            x: 0,
+                            x: -10,  // Iets naar links voor zekerheid
                             y: pdfY,
-                            width: width,
-                            height: row.height + 30,  // Extra hoogte voor zekerheid
+                            width: width + 20,  // Iets breder
+                            height: row.height + 50,  // Veel extra hoogte
                             color: PDFLib.rgb(1, 1, 1),
                             borderWidth: 0
                         });
