@@ -459,7 +459,8 @@
                 processedData = {
                     lines: keptLines,
                     allLines: classifiedLines,
-                    originalName: currentFile.name
+                    originalName: currentFile.name,
+                    originalPdfBytes: pdfData // Bewaar originele PDF bytes
                 };
                 
                 log(`Data opgeslagen: ${keptLines.length} regels om te downloaden`);
@@ -575,6 +576,24 @@
             
             if (!processedData) {
                 alert('Geen data beschikbaar. Verwerk eerst een PDF.');
+                return;
+            }
+            
+            // Als we geen tekst hebben herkend, kopieer dan gewoon de originele PDF
+            if (processedData.lines.length === 0 && processedData.originalPdfBytes) {
+                log('Geen tekst herkend, originele PDF wordt gedownload...');
+                
+                const blob = new Blob([processedData.originalPdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'onderhoudshistorie.pdf';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                log('Originele PDF gedownload', 'success');
                 return;
             }
             
