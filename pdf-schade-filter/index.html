@@ -359,18 +359,25 @@
                         const page = await pdf.getPage(i);
                         
                         // Render met HOGE resolutie voor betere OCR
-                        const scale = 3.0; // Hogere resolutie
+                        const scale = 2.0;
                         const viewport = page.getViewport({ scale });
                         const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
+                        const ctx = canvas.getContext('2d', { willReadFrequently: true });
                         canvas.width = viewport.width;
                         canvas.height = viewport.height;
                         
-                        // Witte achtergrond voor betere contrast
-                        ctx.fillStyle = 'white';
+                        // Witte achtergrond EERST
+                        ctx.fillStyle = '#FFFFFF';
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         
-                        await page.render({ canvasContext: ctx, viewport }).promise;
+                        // Render PDF op canvas
+                        const renderContext = {
+                            canvasContext: ctx,
+                            viewport: viewport,
+                            background: 'white'
+                        };
+                        
+                        await page.render(renderContext).promise;
                         
                         log(`Pagina ${i} gerenderd: ${canvas.width}x${canvas.height}`);
                         
@@ -500,14 +507,19 @@
             try {
                 // Als we geen regels hebben, download origineel
                 if (processedData.lines.length === 0) {
-                    log('Download originele PDF...');
+                    log('Download originele PDF (geen tekst herkend)...');
+                    
+                    // Gebruik de originele file direct
                     const blob = new Blob([processedData.originalPdfBytes], { type: 'application/pdf' });
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = processedData.originalName;
+                    link.download = 'onderhoudshistorie_origineel.pdf';
+                    document.body.appendChild(link);
                     link.click();
+                    document.body.removeChild(link);
                     URL.revokeObjectURL(url);
+                    
                     log('Origineel gedownload', 'success');
                     return;
                 }
