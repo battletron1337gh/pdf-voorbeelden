@@ -199,7 +199,7 @@
                 updateProgress(10, 'PDF laden...');
                 
                 const arrayBuffer = await currentFile.arrayBuffer();
-                originalPdfBytes = new Uint8Array(arrayBuffer);
+                originalPdfBytes = arrayBuffer; // Bewaar als ArrayBuffer
                 
                 const pdf = await pdfjsLib.getDocument({ data: originalPdfBytes }).promise;
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
@@ -278,8 +278,8 @@
             try {
                 log('PDF aanmaken...');
                 
-                // Laad originele PDF
-                const pdfDoc = await PDFLib.PDFDocument.load(originalPdfBytes);
+                // Laad originele PDF - gebruik de bytes direct
+                const pdfDoc = await PDFLib.PDFDocument.load(originalPdfBytes.buffer || originalPdfBytes);
                 const pages = pdfDoc.getPages();
                 
                 // Voor elke pagina met schade items
