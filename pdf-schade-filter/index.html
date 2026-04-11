@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Schade Filter</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -35,7 +34,6 @@
             background: #f8f9ff;
         }
         .upload-area:hover { border-color: #764ba2; background: #f0f2ff; }
-        .upload-area.dragover { border-color: #764ba2; background: #e8ebff; transform: scale(1.02); }
         .upload-icon { font-size: 48px; margin-bottom: 15px; }
         input[type="file"] { display: none; }
         .btn {
@@ -46,11 +44,9 @@
             font-size: 1rem;
             border-radius: 8px;
             cursor: pointer;
-            transition: all 0.3s ease;
             margin-top: 20px;
             margin-right: 10px;
         }
-        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4); }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .progress-container { display: none; margin-top: 20px; }
         .progress-container.show { display: block; }
@@ -66,15 +62,12 @@
             width: 0%;
             transition: width 0.3s ease;
         }
-        .progress-text { text-align: center; margin-top: 10px; color: #666; font-weight: 500; }
         .keywords {
             margin-top: 20px;
             padding: 15px;
             background: #fff3e0;
             border-radius: 8px;
-            border: 1px solid #ff9800;
         }
-        .keywords h3 { margin-bottom: 10px; color: #e65100; }
         .keyword {
             display: inline-block;
             background: #ff9800;
@@ -84,21 +77,11 @@
             font-size: 0.85rem;
             margin: 4px;
         }
-        .result-container { display: none; margin-top: 20px; }
-        .result-container.show { display: block; }
-        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-box {
-            background: #f8f9ff;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-        }
-        .stat-number { font-size: 2rem; font-weight: bold; color: #667eea; }
-        .stat-label { color: #666; font-size: 0.9rem; margin-top: 5px; }
         .preview-area {
             background: #f5f5f5;
             border-radius: 8px;
             padding: 20px;
+            margin-top: 20px;
             max-height: 400px;
             overflow-y: auto;
         }
@@ -108,13 +91,9 @@
             padding: 15px;
             margin-bottom: 10px;
             border-left: 4px solid #ccc;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .preview-item.damage { border-left-color: #f44336; background: #ffebee; }
         .preview-item.keep { border-left-color: #4caf50; background: #e8f5e9; }
-        .preview-date { font-weight: bold; color: #333; margin-bottom: 5px; }
-        .preview-text { color: #666; font-size: 0.95rem; }
-        .preview-tag { font-size: 0.8rem; margin-top: 5px; font-weight: 600; }
         .log-container {
             margin-top: 20px;
             padding: 15px;
@@ -123,49 +102,9 @@
             border-radius: 8px;
             font-family: 'Courier New', monospace;
             font-size: 0.85rem;
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
             display: none;
-        }
-        .log-entry { margin-bottom: 5px; }
-        .log-entry.error { color: #ef5350; }
-        .log-entry.success { color: #66bb6a; }
-        .file-info {
-            display: none;
-            background: #e8f5e9;
-            border: 1px solid #4caf50;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-        }
-        .file-info.show { display: block; }
-        .ocr-status {
-            background: #e3f2fd;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            text-align: center;
-        }
-        .ocr-status.loading::after {
-            content: '';
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #667eea;
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
-            vertical-align: middle;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .warning-box {
-            background: #fff3e0;
-            border: 1px solid #ff9800;
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-            color: #e65100;
         }
     </style>
 </head>
@@ -173,34 +112,22 @@
     <div class="container">
         <div class="header">
             <h1>🔧 PDF Schade Filter</h1>
-            <p>Upload een onderhoudshistorie PDF en verwijder automatisch alle schade-regels</p>
+            <p>Verwijder schade-regels uit onderhoudshistorie PDF's</p>
         </div>
         
         <div class="card">
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📄</div>
-                <div style="font-size: 1.2rem; margin-bottom: 10px;">Sleep je PDF hier of klik om te uploaden</div>
-                <div style="color: #666; font-size: 0.9rem;">Ondersteunt PDF bestanden met onderhoudshistorie</div>
+                <div style="font-size: 1.2rem;">Klik om PDF te uploaden</div>
+                <div style="color: #666; font-size: 0.9rem;">Onderhoudshistorie PDF</div>
             </div>
             <input type="file" id="fileInput" accept=".pdf">
-            
-            <div class="file-info" id="fileInfo">
-                <strong>✓ Bestand geselecteerd:</strong> <span id="fileName"></span>
-            </div>
             
             <div class="progress-container" id="progressContainer">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div class="progress-text" id="progressText">Bezig met verwerken...</div>
-            </div>
-            
-            <div class="ocr-status" id="ocrStatus" style="display: none;">
-                <strong>OCR Status:</strong> <span id="ocrText">Initialiseren...</span>
-            </div>
-            
-            <div class="warning-box" id="warningBox" style="display: none;">
-                <strong>⚠️ Let op:</strong> <span id="warningText"></span>
+                <div class="progress-text" id="progressText">Bezig...</div>
             </div>
             
             <div class="keywords">
@@ -208,323 +135,132 @@
                 <div id="keywordList"></div>
             </div>
             
-            <button class="btn" id="processBtn" disabled>Verwerk PDF</button>
-            <button class="btn" id="downloadBtn" style="display: none;">⬇️ Download gefilterde PDF</button>
+            <button class="btn" id="processBtn" disabled>Analyseer PDF</button>
+            <button class="btn" id="downloadBtn" style="display: none;">⬇️ Download PDF zonder schade</button>
             
-            <div class="result-container" id="resultContainer">
-                <div class="stats" id="stats"></div>
-                <div class="preview-area" id="previewArea">
-                    <h3 style="margin-bottom: 15px;">Gevonden regels:</h3>
-                    <div id="previewList"></div>
-                </div>
+            <div class="preview-area" id="previewArea" style="display: none;">
+                <h3>Gevonden regels:</h3>
+                <div id="previewList"></div>
             </div>
             
-            <div class="log-container" id="logContainer">
-                <div id="logContent"></div>
-            </div>
+            <div class="log-container" id="logContainer"></div>
         </div>
     </div>
 
     <script>
-        // Schade trefwoorden
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
         const damageKeywords = [
             'schade', 'botsing', 'collision', 'reparatie', 'herstel',
-            'damage', 'ongeval', 'accident', 'ramp', 'totaal', 'verkeers',
-            'aanrijding', 'aanvaring', 'impact', 'bots', 'gerepareerd',
-            'vervangen', 'vernieuwd', 'nieuw', 'plaatwerk', 'lakwerk',
-            'deuk', 'kras', 'barst', 'gebroken', 'kapot', 'beschadigd'
+            'damage', 'ongeval', 'accident', 'ramp', 'totaal',
+            'aanrijding', 'aanvaring', 'impact', 'plaatwerk', 'lakwerk'
         ];
         
-        // DOM Elements
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const fileInfo = document.getElementById('fileInfo');
-        const fileName = document.getElementById('fileName');
-        const processBtn = document.getElementById('processBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const progressContainer = document.getElementById('progressContainer');
-        const progressFill = document.getElementById('progressFill');
-        const progressText = document.getElementById('progressText');
-        const ocrStatus = document.getElementById('ocrStatus');
-        const ocrText = document.getElementById('ocrText');
-        const warningBox = document.getElementById('warningBox');
-        const warningText = document.getElementById('warningText');
-        const resultContainer = document.getElementById('resultContainer');
-        const stats = document.getElementById('stats');
-        const previewList = document.getElementById('previewList');
-        const logContainer = document.getElementById('logContainer');
-        const logContent = document.getElementById('logContent');
-        const keywordList = document.getElementById('keywordList');
-        
         let currentFile = null;
-        let processedData = null;
-        let tesseractWorker = null;
+        let damageItems = [];
+        let originalPdfBytes = null;
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            keywordList.innerHTML = damageKeywords.map(kw => `<span class="keyword">${kw}</span>`).join('');
-            initTesseract();
+        document.getElementById('keywordList').innerHTML = 
+            damageKeywords.map(kw => `<span class="keyword">${kw}</span>`).join('');
+        
+        document.getElementById('uploadArea').addEventListener('click', () => 
+            document.getElementById('fileInput').click());
+        
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                currentFile = e.target.files[0];
+                document.getElementById('processBtn').disabled = false;
+                log('Bestand: ' + currentFile.name);
+            }
         });
         
-        async function initTesseract() {
-            try {
-                log('Tesseract OCR initialiseren...');
-                tesseractWorker = await Tesseract.createWorker('nld', 1, {
-                    logger: m => {
-                        if (m.status === 'recognizing text') {
-                            ocrText.textContent = `OCR: ${Math.round(m.progress * 100)}%`;
-                        }
-                    }
-                });
-                log('OCR klaar!', 'success');
-            } catch (err) {
-                log('OCR init fout: ' + err.message, 'error');
-            }
+        document.getElementById('processBtn').addEventListener('click', analyzePDF);
+        document.getElementById('downloadBtn').addEventListener('click', downloadCleanPDF);
+        
+        function log(msg) {
+            const container = document.getElementById('logContainer');
+            container.style.display = 'block';
+            container.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
         }
         
-        uploadArea.addEventListener('click', () => fileInput.click());
-        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
-        });
-        fileInput.addEventListener('change', (e) => { if (e.target.files.length > 0) handleFile(e.target.files[0]); });
-        processBtn.addEventListener('click', processPDF);
-        downloadBtn.addEventListener('click', downloadPDF);
-        
-        function handleFile(file) {
-            if (file.type !== 'application/pdf') {
-                alert('Selecteer een PDF bestand');
-                return;
-            }
-            currentFile = file;
-            fileName.textContent = file.name;
-            fileInfo.classList.add('show');
-            processBtn.disabled = false;
-            resultContainer.classList.remove('show');
-            downloadBtn.style.display = 'none';
-            warningBox.style.display = 'none';
-            log('Bestand geselecteerd: ' + file.name, 'success');
+        function updateProgress(pct, text) {
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressContainer').classList.add('show');
         }
         
-        function log(message, type = 'info') {
-            logContainer.style.display = 'block';
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logContent.appendChild(entry);
-            logContent.scrollTop = logContent.scrollHeight;
-        }
-        
-        function updateProgress(percent, text) {
-            progressFill.style.width = percent + '%';
-            progressText.textContent = text;
-        }
-        
-        async function processPDF() {
+        async function analyzePDF() {
             if (!currentFile) return;
             
-            processBtn.disabled = true;
-            progressContainer.classList.add('show');
-            ocrStatus.style.display = 'block';
-            ocrStatus.classList.add('loading');
-            resultContainer.classList.remove('show');
-            downloadBtn.style.display = 'none';
-            warningBox.style.display = 'none';
+            document.getElementById('processBtn').disabled = true;
+            damageItems = [];
             
             try {
-                log('Start PDF verwerking...');
                 updateProgress(10, 'PDF laden...');
                 
                 const arrayBuffer = await currentFile.arrayBuffer();
-                const pdfData = new Uint8Array(arrayBuffer);
+                originalPdfBytes = new Uint8Array(arrayBuffer);
                 
-                log('PDF data geladen: ' + pdfData.length + ' bytes');
-                
-                // Laad met PDF.js
-                const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                const pdf = await pdfjsLib.getDocument({ data: originalPdfBytes }).promise;
                 log(`PDF geladen: ${pdf.numPages} pagina's`);
                 
-                updateProgress(20, 'Tekst extractie...');
-                
-                const allLines = [];
-                
-                // EERST: Probeer tekst direct uit PDF te halen (geen OCR)
                 for (let i = 1; i <= pdf.numPages; i++) {
-                    try {
-                        updateProgress(20 + ((i-1) / pdf.numPages) * 30, `Pagina ${i} - tekst extractie...`);
-                        
-                        const page = await pdf.getPage(i);
-                        
-                        // Probeer tekst direct te halen
-                        const textContent = await page.getTextContent();
-                        const textItems = textContent.items;
-                        
-                        log(`Pagina ${i}: ${textItems.length} tekst items gevonden`);
-                        
-                        if (textItems.length > 0) {
-                            // Combineer tekst items
-                            let pageText = '';
-                            let lastY = null;
-                            
-                            for (const item of textItems) {
-                                if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
-                                    pageText += '\n';
-                                }
-                                pageText += item.str + ' ';
-                                lastY = item.transform[5];
-                            }
-                            
-                            // Splits in regels
-                            const lines = pageText.split('\n')
-                                .map(l => l.trim())
-                                .filter(l => l.length > 3);
-                            
-                            lines.forEach((line, idx) => {
-                                const lowerLine = line.toLowerCase();
-                                const isDamage = damageKeywords.some(kw => lowerLine.includes(kw));
-                                
-                                allLines.push({
-                                    id: `p${i}-l${idx}`,
-                                    page: i,
-                                    text: line,
-                                    isDamage: isDamage,
-                                    source: 'text'
-                                });
-                            });
-                            
-                            log(`Pagina ${i}: ${lines.length} tekst regels`);
-                        }
-                        
-                        page.cleanup();
-                    } catch (pageErr) {
-                        log(`Fout pagina ${i}: ${pageErr.message}`, 'error');
-                    }
-                }
-                
-                // ALS geen tekst gevonden, probeer OCR
-                if (allLines.length === 0) {
-                    log('Geen tekst in PDF gevonden, start OCR...');
+                    updateProgress(10 + (i / pdf.numPages) * 70, `Pagina ${i} analyseren...`);
                     
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                        try {
-                            updateProgress(50 + ((i-1) / pdf.numPages) * 30, `Pagina ${i} - OCR...`);
-                            
-                            const page = await pdf.getPage(i);
-                            
-                            const scale = 2.0;
-                            const viewport = page.getViewport({ scale });
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            canvas.width = viewport.width;
-                            canvas.height = viewport.height;
-                            
-                            ctx.fillStyle = '#FFFFFF';
-                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                            
-                            await page.render({ canvasContext: ctx, viewport }).promise;
-                            
-                            if (tesseractWorker) {
-                                ocrText.textContent = `Pagina ${i} - OCR...`;
-                                const result = await tesseractWorker.recognize(canvas);
-                                const text = result.data.text;
-                                
-                                if (text.trim()) {
-                                    const lines = text.split('\n')
-                                        .map(l => l.trim())
-                                        .filter(l => l.length > 3);
-                                    
-                                    lines.forEach((line, idx) => {
-                                        const isDamage = damageKeywords.some(kw => line.toLowerCase().includes(kw));
-                                        allLines.push({
-                                            id: `p${i}-l${idx}`,
-                                            page: i,
-                                            text: line,
-                                            isDamage: isDamage,
-                                            source: 'ocr'
-                                        });
-                                    });
-                                    
-                                    log(`Pagina ${i} OCR: ${lines.length} regels`);
-                                }
-                            }
-                            
-                            page.cleanup();
-                        } catch (pageErr) {
-                            log(`OCR fout pagina ${i}: ${pageErr.message}`, 'error');
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    
+                    for (const item of textContent.items) {
+                        const text = item.str.toLowerCase();
+                        const hasDamage = damageKeywords.some(kw => text.includes(kw));
+                        
+                        if (hasDamage) {
+                            damageItems.push({
+                                page: i,
+                                text: item.str,
+                                x: item.transform[4],
+                                y: item.transform[5],
+                                width: item.width,
+                                height: item.height || 12
+                            });
                         }
                     }
+                    
+                    page.cleanup();
                 }
-                
-                updateProgress(85, 'Resultaten verwerken...');
-                
-                log(`Totaal: ${allLines.length} regels gevonden`);
-                
-                if (allLines.length === 0) {
-                    warningBox.style.display = 'block';
-                    warningText.textContent = 'Geen tekst herkend in de PDF. De PDF wordt ongewijzigd gedownload.';
-                }
-                
-                displayResults(allLines);
-                
-                processedData = {
-                    lines: allLines.filter(l => !l.isDamage),
-                    allLines: allLines,
-                    originalName: currentFile.name,
-                    originalPdfBytes: pdfData
-                };
                 
                 updateProgress(100, 'Klaar!');
-                ocrStatus.classList.remove('loading');
-                ocrText.textContent = `Klaar! ${allLines.length} regels gevonden`;
                 
-                resultContainer.classList.add('show');
-                downloadBtn.style.display = 'inline-block';
-                processBtn.disabled = false;
+                showResults();
                 
-            } catch (error) {
-                console.error(error);
-                log('Fout: ' + error.message, 'error');
-                updateProgress(0, 'Fout');
-                ocrStatus.classList.remove('loading');
-                processBtn.disabled = false;
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+                document.getElementById('processBtn').disabled = false;
+                
+            } catch (err) {
+                log('Fout: ' + err.message);
+                document.getElementById('processBtn').disabled = false;
             }
         }
         
-        function displayResults(lines) {
-            const damageCount = lines.filter(l => l.isDamage).length;
-            const keepCount = lines.filter(l => !l.isDamage).length;
+        function showResults() {
+            const preview = document.getElementById('previewArea');
+            const list = document.getElementById('previewList');
             
-            stats.innerHTML = `
-                <div class="stat-box">
-                    <div class="stat-number">${lines.length}</div>
-                    <div class="stat-label">Totaal regels</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-number" style="color: #f44336;">${damageCount}</div>
-                    <div class="stat-label">Schade</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-number" style="color: #4caf50;">${keepCount}</div>
-                    <div class="stat-label">Onderhoud</div>
-                </div>
-            `;
+            preview.style.display = 'block';
             
-            if (lines.length === 0) {
-                previewList.innerHTML = '<p style="text-align: center; color: #999;">Geen tekst herkend</p>';
+            if (damageItems.length === 0) {
+                list.innerHTML = '<p>✅ Geen schade-regels gevonden!</p>';
                 return;
             }
             
-            previewList.innerHTML = lines.map(line => `
-                <div class="preview-item ${line.isDamage ? 'damage' : 'keep'}">
-                    <div class="preview-text">${escapeHtml(line.text)}</div>
-                    <div class="preview-tag" style="color: ${line.isDamage ? '#f44336' : '#4caf50'}">
-                        ${line.isDamage ? '🚫 Verwijderd' : '✓ Behouden'} (Pagina ${line.page})
-                    </div>
+            list.innerHTML = damageItems.map(item => `
+                <div class="preview-item damage">
+                    <strong>Pagina ${item.page}:</strong> ${escapeHtml(item.text)}
+                    <br><small style="color: #666;">Positie: ${Math.round(item.x)}, ${Math.round(item.y)}</small>
                 </div>
             `).join('');
+            
+            log(`${damageItems.length} schade items gevonden`);
         }
         
         function escapeHtml(text) {
@@ -533,123 +269,68 @@
             return div.innerHTML;
         }
         
-        async function downloadPDF() {
-            if (!processedData) {
-                alert('Geen data beschikbaar');
-                return;
-            }
+        async function downloadCleanPDF() {
+            if (!originalPdfBytes) return;
             
-            downloadBtn.disabled = true;
-            downloadBtn.textContent = 'Bezig...';
+            document.getElementById('downloadBtn').disabled = true;
+            document.getElementById('downloadBtn').textContent = 'Bezig...';
             
             try {
-                // Als we geen regels hebben, download origineel
-                if (processedData.lines.length === 0) {
-                    log('Download originele PDF (geen tekst herkend)...');
+                log('PDF aanmaken...');
+                
+                // Laad originele PDF
+                const pdfDoc = await PDFLib.PDFDocument.load(originalPdfBytes);
+                const pages = pdfDoc.getPages();
+                
+                // Voor elke pagina met schade items
+                const pagesWithDamage = [...new Set(damageItems.map(i => i.page))];
+                
+                for (const pageNum of pagesWithDamage) {
+                    const page = pages[pageNum - 1];
+                    const { width, height } = page.getSize();
                     
-                    // Gebruik de originele file direct
-                    const blob = new Blob([processedData.originalPdfBytes], { type: 'application/pdf' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = 'onderhoudshistorie_origineel.pdf';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
+                    // Vind alle schade items op deze pagina
+                    const itemsOnPage = damageItems.filter(i => i.page === pageNum);
                     
-                    log('Origineel gedownload', 'success');
-                    return;
-                }
-                
-                // Maak nieuwe PDF met alleen onderhoudsregels
-                const { PDFDocument, rgb, StandardFonts } = PDFLib;
-                const newPdf = await PDFDocument.create();
-                const font = await newPdf.embedFont(StandardFonts.Helvetica);
-                const fontBold = await newPdf.embedFont(StandardFonts.HelveticaBold);
-                
-                let page = newPdf.addPage([595, 842]);
-                let y = 800;
-                
-                // Titel
-                page.drawText('ONDERHOUDSHISTORIE (GEFILTERD)', {
-                    x: 50, y: y, size: 16, font: fontBold, color: rgb(0.2, 0.2, 0.2)
-                });
-                y -= 25;
-                
-                page.drawText(`Origineel: ${processedData.originalName}`, {
-                    x: 50, y: y, size: 9, font: font, color: rgb(0.4, 0.4, 0.4)
-                });
-                y -= 15;
-                
-                page.drawText(`${processedData.lines.length} regels | ${new Date().toLocaleDateString('nl-NL')}`, {
-                    x: 50, y: y, size: 9, font: font, color: rgb(0.4, 0.4, 0.4)
-                });
-                y -= 25;
-                
-                // Lijn
-                page.drawLine({ start: { x: 50, y }, end: { x: 545, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-                y -= 20;
-                
-                // Regels
-                for (const line of processedData.lines) {
-                    if (y < 60) {
-                        page = newPdf.addPage([595, 842]);
-                        y = 800;
-                    }
-                    
-                    const words = line.text.split(' ');
-                    let currentLine = '';
-                    const wrappedLines = [];
-                    
-                    for (const word of words) {
-                        const test = currentLine + word + ' ';
-                        if (font.widthOfTextAtSize(test, 10) > 495 && currentLine) {
-                            wrappedLines.push(currentLine.trim());
-                            currentLine = word + ' ';
-                        } else {
-                            currentLine = test;
-                        }
-                    }
-                    wrappedLines.push(currentLine.trim());
-                    
-                    wrappedLines.forEach((textLine, i) => {
-                        page.drawText(textLine, {
-                            x: i === 0 ? 50 : 65,
-                            y: y,
-                            size: 10,
-                            font: font,
-                            color: rgb(0.1, 0.1, 0.1)
+                    for (const item of itemsOnPage) {
+                        // Teken witte rechthoek over de schade tekst
+                        // PDF coördinaten: y is vanaf onderen, dus moeten we omrekenen
+                        const pdfY = height - item.y - (item.height || 12);
+                        
+                        page.drawRectangle({
+                            x: item.x - 2,
+                            y: pdfY - 2,
+                            width: item.width + 4,
+                            height: (item.height || 12) + 4,
+                            color: PDFLib.rgb(1, 1, 1), // Wit
+                            borderColor: PDFLib.rgb(1, 1, 1),
+                            borderWidth: 0,
                         });
-                        y -= 13;
-                    });
+                    }
                     
-                    y -= 5;
+                    log(`Pagina ${pageNum}: ${itemsOnPage.length} items verwijderd`);
                 }
                 
-                const pdfBytes = await newPdf.save();
+                // Sla op
+                const pdfBytes = await pdfDoc.save();
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
+                
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = 'onderhoudshistorie_gefilterd.pdf';
+                link.download = 'onderhoudshistorie_zonder_schade.pdf';
                 link.click();
-                URL.revokeObjectURL(url);
                 
-                log('Gefilterde PDF gedownload!', 'success');
+                URL.revokeObjectURL(url);
+                log('PDF gedownload!', 'success');
                 
             } catch (err) {
-                log('Download fout: ' + err.message, 'error');
-                alert('Fout bij downloaden: ' + err.message);
+                log('Fout: ' + err.message);
             } finally {
-                downloadBtn.disabled = false;
-                downloadBtn.textContent = '⬇️ Download gefilterde PDF';
+                document.getElementById('downloadBtn').disabled = false;
+                document.getElementById('downloadBtn').textContent = '⬇️ Download PDF zonder schade';
             }
         }
-        
-        window.addEventListener('beforeunload', async () => {
-            if (tesseractWorker) await tesseractWorker.terminate();
-        });
     </script>
 </body>
 </html>
